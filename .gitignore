@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+*.pyc
+*.pcapng
+.DS_Store
