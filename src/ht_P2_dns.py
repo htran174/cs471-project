@@ -7,17 +7,21 @@ DNS_PORT = 5000
 PRIMARY_IP = "127.0.0.1"
 PRIMARY_PORT = 5001
 
+BACKUP_IP = "127.0.0.1"
+BACKUP_PORT = 5002
+
 CURRENT_TARGET = (PRIMARY_IP, PRIMARY_PORT)
+
+TIMEOUT = 3
+last_primary_hb = time.time()
+primary_alive = True
+routing_state = "ROUTING_TO_PRIMARY"
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((DNS_IP, DNS_PORT))
 sock.settimeout(1)
 
-last_primary_hb = 0
-TIMEOUT = 3
-primary_alive = True
-
-print("DNS running... state = ROUTING_TO_PRIMARY")
+print(f"DNS running... state = {routing_state}")
 
 while True:
     current_time = time.time()
@@ -25,6 +29,10 @@ while True:
     if primary_alive and current_time - last_primary_hb > TIMEOUT:
         print("PRIMARY TIMEOUT DETECTED (DNS)")
         primary_alive = False
+        CURRENT_TARGET = (BACKUP_IP, BACKUP_PORT)
+        routing_state = "ROUTING_TO_BACKUP"
+        print("PROMOTING BACKUP")
+        print(f"DNS state = {routing_state}")
 
     try:
         data, addr = sock.recvfrom(1024)
@@ -33,8 +41,13 @@ while True:
         print(f"RECV from {addr}: {msg}")
 
         if msg.startswith("HB|PRIMARY|"):
-            primary_alive = True
             last_primary_hb = time.time()
+
+            if not primary_alive:
+                print("PRIMARY heartbeat resumed")
+
+            primary_alive = True
+
             print(f"PRIMARY heartbeat received at {last_primary_hb}")
 
         elif msg.startswith("REQ|"):
