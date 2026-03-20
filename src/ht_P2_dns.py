@@ -1,4 +1,5 @@
 import socket
+import time
 
 DNS_IP = "127.0.0.1"
 DNS_PORT = 5000
@@ -10,28 +11,37 @@ CURRENT_TARGET = (PRIMARY_IP, PRIMARY_PORT)
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((DNS_IP, DNS_PORT))
+sock.settimeout(1)
 
-print("DNS running...")
+last_primary_hb = 0
+
+print("DNS running... state = ROUTING_TO_PRIMARY")
 
 while True:
-    data, addr = sock.recvfrom(1024)
-    msg = data.decode()
+    try:
+        data, addr = sock.recvfrom(1024)
+        msg = data.decode()
 
-    print(f"RECV from {addr}: {msg}")
+        print(f"RECV from {addr}: {msg}")
 
-    # Message from client
-    if msg.startswith("REQ|"):
-        text = msg.split("|", 1)[1]
+        if msg.startswith("HB|PRIMARY|"):
+            last_primary_hb = time.time()
+            print(f"PRIMARY heartbeat received at {last_primary_hb}")
 
-        forward_msg = f"REQ|{addr[0]}|{addr[1]}|{text}"
-        sock.sendto(forward_msg.encode(), CURRENT_TARGET)
+        elif msg.startswith("REQ|"):
+            text = msg.split("|", 1)[1]
 
-        print(f"FORWARD to ACTIVE SERVER: {forward_msg}")
+            forward_msg = f"REQ|{addr[0]}|{addr[1]}|{text}"
+            sock.sendto(forward_msg.encode(), CURRENT_TARGET)
 
-    # Message from server
-    elif msg.startswith("RESP|"):
-        _, client_ip, client_port, text = msg.split("|", 3)
+            print(f"FORWARD to ACTIVE SERVER: {forward_msg}")
 
-        sock.sendto(text.encode(), (client_ip, int(client_port)))
+        elif msg.startswith("RESP|"):
+            _, client_ip, client_port, text = msg.split("|", 3)
 
-        print(f"RETURN to CLIENT: {text}")
+            sock.sendto(text.encode(), (client_ip, int(client_port)))
+
+            print(f"RETURN to CLIENT: {text}")
+
+    except socket.timeout:
+        pass

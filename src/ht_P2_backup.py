@@ -1,4 +1,5 @@
 import socket
+import time
 
 BACKUP_IP = "127.0.0.1"
 BACKUP_PORT = 5002
@@ -6,23 +7,34 @@ BACKUP_PORT = 5002
 DNS_IP = "127.0.0.1"
 DNS_PORT = 5000
 
+last_primary_hb = 0
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((BACKUP_IP, BACKUP_PORT))
+sock.settimeout(1)
 
 print("Backup running... current state = STANDBY")
 
 while True:
-    data, addr = sock.recvfrom(1024)
-    msg = data.decode()
+    try:
+        data, addr = sock.recvfrom(1024)
+        msg = data.decode()
 
-    print(f"RECV from {addr}: {msg}")
+        print(f"RECV from {addr}: {msg}")
 
-    if msg.startswith("REQ|"):
-        _, client_ip, client_port, text = msg.split("|", 3)
+        if msg.startswith("HB|PRIMARY|"):
+            last_primary_hb = time.time()
+            print(f"PRIMARY heartbeat received at {last_primary_hb}")
 
-        response = text.upper()
+        elif msg.startswith("REQ|"):
+            _, client_ip, client_port, text = msg.split("|", 3)
 
-        send_msg = f"RESP|{client_ip}|{client_port}|{response}"
-        sock.sendto(send_msg.encode(), (DNS_IP, DNS_PORT))
+            response = text.upper()
 
-        print(f"SENT to DNS: {send_msg}")
+            send_msg = f"RESP|{client_ip}|{client_port}|{response}"
+            sock.sendto(send_msg.encode(), (DNS_IP, DNS_PORT))
+
+            print(f"SENT to DNS: {send_msg}")
+
+    except socket.timeout:
+        pass
