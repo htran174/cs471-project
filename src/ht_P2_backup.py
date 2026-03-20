@@ -8,9 +8,12 @@ DNS_IP = "127.0.0.1"
 DNS_PORT = 5000
 
 TIMEOUT = 3
+RECOVERY_HEARTBEATS_NEEDED = 2
+
 last_primary_hb = time.time()
 primary_alive = True
 backup_state = "STANDBY"
+recovery_hb_count = 0
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((BACKUP_IP, BACKUP_PORT))
@@ -25,6 +28,7 @@ while True:
         print("PRIMARY TIMEOUT DETECTED (BACKUP)")
         primary_alive = False
         backup_state = "ACTIVE"
+        recovery_hb_count = 0
         print(f"BACKUP STATE = {backup_state}")
 
     try:
@@ -35,8 +39,19 @@ while True:
 
         if msg.startswith("HB|PRIMARY|"):
             last_primary_hb = time.time()
-            primary_alive = True
-            print(f"PRIMARY heartbeat received at {last_primary_hb}")
+
+            if not primary_alive:
+                recovery_hb_count += 1
+                print(f"PRIMARY recovery heartbeat count = {recovery_hb_count}")
+
+                if backup_state == "ACTIVE" and recovery_hb_count >= RECOVERY_HEARTBEATS_NEEDED:
+                    primary_alive = True
+                    backup_state = "STANDBY"
+                    recovery_hb_count = 0
+                    print("PRIMARY RECOVERY DETECTED AT BACKUP")
+                    print(f"BACKUP STATE = {backup_state}")
+            else:
+                print(f"PRIMARY heartbeat received at {last_primary_hb}")
 
         elif msg.startswith("REQ|"):
             if backup_state == "ACTIVE":

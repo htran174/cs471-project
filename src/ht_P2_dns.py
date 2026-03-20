@@ -13,9 +13,12 @@ BACKUP_PORT = 5002
 CURRENT_TARGET = (PRIMARY_IP, PRIMARY_PORT)
 
 TIMEOUT = 3
+RECOVERY_HEARTBEATS_NEEDED = 2
+
 last_primary_hb = time.time()
 primary_alive = True
 routing_state = "ROUTING_TO_PRIMARY"
+recovery_hb_count = 0
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((DNS_IP, DNS_PORT))
@@ -31,6 +34,7 @@ while True:
         primary_alive = False
         CURRENT_TARGET = (BACKUP_IP, BACKUP_PORT)
         routing_state = "ROUTING_TO_BACKUP"
+        recovery_hb_count = 0
         print("PROMOTING BACKUP")
         print(f"DNS state = {routing_state}")
 
@@ -44,11 +48,18 @@ while True:
             last_primary_hb = time.time()
 
             if not primary_alive:
-                print("PRIMARY heartbeat resumed")
+                recovery_hb_count += 1
+                print(f"PRIMARY recovery heartbeat count = {recovery_hb_count}")
 
-            primary_alive = True
-
-            print(f"PRIMARY heartbeat received at {last_primary_hb}")
+                if routing_state == "ROUTING_TO_BACKUP" and recovery_hb_count >= RECOVERY_HEARTBEATS_NEEDED:
+                    primary_alive = True
+                    CURRENT_TARGET = (PRIMARY_IP, PRIMARY_PORT)
+                    routing_state = "ROUTING_TO_PRIMARY"
+                    recovery_hb_count = 0
+                    print("PRIMARY RECOVERY DETECTED")
+                    print(f"DNS state = {routing_state}")
+            else:
+                print(f"PRIMARY heartbeat received at {last_primary_hb}")
 
         elif msg.startswith("REQ|"):
             text = msg.split("|", 1)[1]
